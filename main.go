@@ -123,12 +123,12 @@ func (t *Task) Run(client *Client, ctx context.Context) {
 			return
 		case <-t.ticker.C:
 			event, err := client.GetEvents(ctx)
-			fmt.Println(event)
+			log.Println(event)
 			if err != nil {
 				log.Fatal(err)
 			}
 			resp, err := client.PushEvents(ctx, event)
-			fmt.Println(resp)
+			log.Println(resp)
 
 			if err != nil {
 				log.Fatal(err)
@@ -143,6 +143,8 @@ func (t *Task) Stop() {
 }
 
 func main() {
+
+	log.Println("Starting Badura Client")
 
 	client := NewClient()
 	ctx := context.Background()
@@ -159,7 +161,7 @@ func main() {
 
 	select {
 	case sig := <-c:
-		fmt.Printf("Got %s signal. Aborting...\n", sig)
+		log.Printf("Got %s signal. Aborting...\n", sig)
 		task.Stop()
 	}
 }
