@@ -33,14 +33,16 @@ type Client struct {
 }
 
 type EventsStruck struct {
-	Events []struct {
-		EventID    int           `json:"EventID"`
-		EventName  string        `json:"EventName"`
-		EventTime  float64       `json:"EventTime"`
-		Assisters  []interface{} `json:"Assisters,omitempty"`
-		KillerName string        `json:"KillerName,omitempty"`
-		VictimName string        `json:"VictimName,omitempty"`
-	} `json:"Events"`
+	Events Event `json:"Events"`
+}
+
+type Event []struct {
+	EventID    int           `json:"EventID"`
+	EventName  string        `json:"EventName"`
+	EventTime  float64       `json:"EventTime"`
+	Assisters  []interface{} `json:"Assisters,omitempty"`
+	KillerName string        `json:"KillerName,omitempty"`
+	VictimName string        `json:"VictimName,omitempty"`
 }
 
 type Response struct {
@@ -123,12 +125,10 @@ func (t *Task) Run(client *Client, ctx context.Context) {
 			return
 		case <-t.ticker.C:
 			event, err := client.GetEvents(ctx)
-			log.Println(event)
 			if err != nil {
 				log.Fatal(err)
 			}
-			resp, err := client.PushEvents(ctx, event)
-			log.Println(resp)
+			_, err = client.PushEvents(ctx, event)
 
 			if err != nil {
 				log.Fatal(err)
