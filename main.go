@@ -20,6 +20,17 @@ const (
 	ServerURL = "https://httpbin.org"
 )
 
+// A backoff schedule for when and how often to retry failed HTTP
+// requests. The first element is the time to wait after the
+// first failure, the second the time to wait after the second
+// failure, etc. After reaching the last element, retries stop
+// and the request is considered failed.
+var backoffSchedule = []time.Duration{
+	10 * time.Second,
+	20 * time.Second,
+	30 * time.Second,
+}
+
 type Task struct {
 	closed chan struct{}
 	wg     sync.WaitGroup
@@ -87,6 +98,7 @@ func (c *Client) PushEvents(ctx context.Context, v interface{}) (*Response, erro
 
 	res := Response{}
 	if err := c.sendRequest(req, &res); err != nil {
+
 		return nil, err
 	}
 	return &res, nil
@@ -95,7 +107,20 @@ func (c *Client) PushEvents(ctx context.Context, v interface{}) (*Response, erro
 
 func (c *Client) sendRequest(req *http.Request, v interface{}) error {
 
-	res, err := c.HTTPClient.Do(req)
+	var err error
+	var res *http.Response
+
+	for _, backoff := range backoffSchedule {
+		res, err = c.HTTPClient.Do(req)
+
+		if err == nil {
+			break
+		}
+		log.Printf("Request error: %+v\n", err)
+		log.Printf("Retrying in %v\n", backoff)
+		time.Sleep(backoff)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -128,8 +153,10 @@ func (t *Task) Run(client *Client, ctx context.Context) {
 			if err != nil {
 				log.Fatal(err)
 			}
-			_, err = client.PushEvents(ctx, event)
-
+			if event != nil {
+				log.Println("Events detected. Will push")
+				_, err = client.PushEvents(ctx, event)
+			}
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -144,7 +171,7 @@ func (t *Task) Stop() {
 
 func main() {
 
-	log.Println("Starting Badura Client")
+	log.Println("Starting Badura Client ...")
 
 	client := NewClient()
 	ctx := context.Background()
