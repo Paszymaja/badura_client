@@ -17,7 +17,7 @@ import (
 
 const (
 	ClientURL = "https://127.0.0.1:2999"
-	ServerURL = "https://httpbin.org"
+	ServerURL = "https://discord-js-boi-bot.herokuapp.com"
 )
 
 // A backoff schedule for when and how often to retry failed HTTP
@@ -30,6 +30,8 @@ var backoffSchedule = []time.Duration{
 	20 * time.Second,
 	30 * time.Second,
 }
+
+var Started = false
 
 type Task struct {
 	closed chan struct{}
@@ -56,9 +58,19 @@ type Event []struct {
 	VictimName string        `json:"VictimName,omitempty"`
 }
 
-type Response struct {
-	Code int         `json:"code"`
-	Data interface{} `json:"data"`
+type GameStart struct {
+	SummonerName string  `json:"SummonerName"`
+	EventID      int     `json:"EventID"`
+	EventName    string  `json:"EventName"`
+	EventTime    float64 `json:"EventTime"`
+}
+
+type PlayerDeath struct {
+	EventID    int     `json:"EventID"`
+	EventName  string  `json:"EventName"`
+	EventTime  float64 `json:"EventTime"`
+	KillerName string  `json:"KillerName,omitempty"`
+	VictimName string  `json:"VictimName,omitempty"`
 }
 
 func NewClient() *Client {
@@ -87,16 +99,17 @@ func (c *Client) GetEvents(ctx context.Context) (*EventsStruck, error) {
 	return &res, nil
 }
 
-func (c *Client) PushEvents(ctx context.Context, v interface{}) (*Response, error) {
+func (c *Client) PushDeath(ctx context.Context, v interface{}) (*PlayerDeath, error) {
 	EventsJSON, err := json.Marshal(v)
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/anything", c.ServerURL), bytes.NewBuffer(EventsJSON))
+	fmt.Println(string(EventsJSON))
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/death", c.ServerURL), bytes.NewBuffer(EventsJSON))
 	if err != nil {
 		return nil, err
 	}
 
 	req = req.WithContext(ctx)
 
-	res := Response{}
+	res := PlayerDeath{}
 	if err := c.sendRequest(req, &res); err != nil {
 
 		return nil, err
@@ -105,7 +118,61 @@ func (c *Client) PushEvents(ctx context.Context, v interface{}) (*Response, erro
 
 }
 
+func (c *Client) PushGameStart(ctx context.Context, v interface{}) (*GameStart, error) {
+	EventsJSON, err := json.Marshal(v)
+	fmt.Println(string(EventsJSON))
+
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/game_started", c.ServerURL), bytes.NewBuffer(EventsJSON))
+	if err != nil {
+		return nil, err
+	}
+
+	req = req.WithContext(ctx)
+
+	res := GameStart{}
+	if err := c.sendRequest(req, &res); err != nil {
+
+		return nil, err
+	}
+	return &res, nil
+
+}
+
+func NewGameStart(event *EventsStruck) *GameStart {
+
+	gs := GameStart{SummonerName: "Ahegao Loli",
+		EventID:   event.Events[0].EventID,
+		EventName: event.Events[0].EventName,
+		EventTime: event.Events[0].EventTime,
+	}
+
+	return &gs
+
+}
+
+func NewDeath(event *EventsStruck) *PlayerDeath {
+
+	var pd PlayerDeath
+
+	for i, v := range event.Events {
+		if v.VictimName == "Paszymaja" {
+			pd = PlayerDeath{
+				EventID:    event.Events[i].EventID,
+				EventName:  event.Events[i].EventName,
+				EventTime:  event.Events[i].EventTime,
+				KillerName: event.Events[i].KillerName,
+				VictimName: event.Events[i].VictimName,
+			}
+		}
+	}
+
+	return &pd
+
+}
+
 func (c *Client) sendRequest(req *http.Request, v interface{}) error {
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Accept", "application/json; charset=utf-8")
 
 	var err error
 	var res *http.Response
@@ -154,8 +221,16 @@ func (t *Task) Run(client *Client, ctx context.Context) {
 				log.Fatal(err)
 			}
 			if event != nil {
-				log.Println("Events detected. Will push")
-				_, err = client.PushEvents(ctx, event)
+				log.Printf("Events detected. Pushing to %s\n", client.ServerURL)
+
+				if Started == false {
+					startEvent := NewGameStart(event)
+					_, err = client.PushGameStart(ctx, *startEvent)
+					Started = true
+				} else {
+					DeathEvent := NewDeath(event)
+					_, err = client.PushDeath(ctx, *DeathEvent)
+				}
 			}
 			if err != nil {
 				log.Fatal(err)
