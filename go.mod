@@ -1,4 +1,4 @@
-module badura_client
+module BaduraClient
 
 go 1.16
 

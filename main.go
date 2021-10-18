@@ -25,10 +25,14 @@ const (
 // first failure, the second the time to wait after the second
 // failure, etc. After reaching the last element, retries stop
 // and the request is considered failed.
+
 var backoffSchedule = []time.Duration{
-	10 * time.Second,
+
 	20 * time.Second,
 	30 * time.Second,
+	40 * time.Second,
+	50 * time.Second,
+	60 * time.Second,
 }
 
 var Started = false
@@ -63,6 +67,7 @@ type GameStart struct {
 	EventID      int     `json:"EventID"`
 	EventName    string  `json:"EventName"`
 	EventTime    float64 `json:"EventTime"`
+	ChannelId    string  `json:"ChannelId"`
 }
 
 type PlayerDeath struct {
@@ -71,6 +76,10 @@ type PlayerDeath struct {
 	EventTime  float64 `json:"EventTime"`
 	KillerName string  `json:"KillerName,omitempty"`
 	VictimName string  `json:"VictimName,omitempty"`
+}
+
+type Response struct {
+	Status string `json:"Status"`
 }
 
 func NewClient() *Client {
@@ -99,7 +108,7 @@ func (c *Client) GetEvents(ctx context.Context) (*EventsStruck, error) {
 	return &res, nil
 }
 
-func (c *Client) PushDeath(ctx context.Context, v interface{}) (*PlayerDeath, error) {
+func (c *Client) PushDeath(ctx context.Context, v interface{}) (*Response, error) {
 	EventsJSON, err := json.Marshal(v)
 	fmt.Println(string(EventsJSON))
 	req, err := http.NewRequest("POST", fmt.Sprintf("%s/death", c.ServerURL), bytes.NewBuffer(EventsJSON))
@@ -109,7 +118,7 @@ func (c *Client) PushDeath(ctx context.Context, v interface{}) (*PlayerDeath, er
 
 	req = req.WithContext(ctx)
 
-	res := PlayerDeath{}
+	res := Response{}
 	if err := c.sendRequest(req, &res); err != nil {
 
 		return nil, err
@@ -118,7 +127,7 @@ func (c *Client) PushDeath(ctx context.Context, v interface{}) (*PlayerDeath, er
 
 }
 
-func (c *Client) PushGameStart(ctx context.Context, v interface{}) (*GameStart, error) {
+func (c *Client) PushGameStart(ctx context.Context, v interface{}) (*Response, error) {
 	EventsJSON, err := json.Marshal(v)
 	fmt.Println(string(EventsJSON))
 
@@ -129,7 +138,7 @@ func (c *Client) PushGameStart(ctx context.Context, v interface{}) (*GameStart, 
 
 	req = req.WithContext(ctx)
 
-	res := GameStart{}
+	res := Response{}
 	if err := c.sendRequest(req, &res); err != nil {
 
 		return nil, err
@@ -140,10 +149,11 @@ func (c *Client) PushGameStart(ctx context.Context, v interface{}) (*GameStart, 
 
 func NewGameStart(event *EventsStruck) *GameStart {
 
-	gs := GameStart{SummonerName: "Ahegao Loli",
+	gs := GameStart{SummonerName: "Paszymaja",
 		EventID:   event.Events[0].EventID,
 		EventName: event.Events[0].EventName,
 		EventTime: event.Events[0].EventTime,
+		ChannelId: "387298617431425025",
 	}
 
 	return &gs
@@ -221,15 +231,16 @@ func (t *Task) Run(client *Client, ctx context.Context) {
 				log.Fatal(err)
 			}
 			if event != nil {
-				log.Printf("Events detected. Pushing to %s\n", client.ServerURL)
 
 				if Started == false {
 					startEvent := NewGameStart(event)
-					_, err = client.PushGameStart(ctx, *startEvent)
+					log.Printf("GameStart detected. Pushing to %s\n", client.ServerURL)
+					_, err = client.PushGameStart(ctx, startEvent)
 					Started = true
 				} else {
 					DeathEvent := NewDeath(event)
-					_, err = client.PushDeath(ctx, *DeathEvent)
+					log.Printf("NewDeath detected. Pushing to %s\n", client.ServerURL)
+					_, err = client.PushDeath(ctx, DeathEvent)
 				}
 			}
 			if err != nil {
