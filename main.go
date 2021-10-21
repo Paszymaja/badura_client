@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -28,11 +29,9 @@ const (
 
 var backoffSchedule = []time.Duration{
 
-	20 * time.Second,
-	30 * time.Second,
-	40 * time.Second,
-	50 * time.Second,
-	60 * time.Second,
+	10 * time.Second,
+	10 * time.Second,
+	10 * time.Second,
 }
 
 var Started = false
@@ -93,6 +92,23 @@ func NewClient() *Client {
 	}
 }
 
+func newHttpClient(timeout time.Duration) *http.Client {
+	tl := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	t := &http.Transport{
+		IdleConnTimeout:     timeout,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     100,
+		DisableCompression:  true,
+		TLSClientConfig:     tl,
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: t,
+	}
+}
+
 func (c *Client) GetEvents(ctx context.Context) (*EventsStruck, error) {
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/liveclientdata/eventdata", c.ClientURL), nil)
@@ -149,7 +165,7 @@ func (c *Client) PushGameStart(ctx context.Context, v interface{}) (*Response, e
 
 func NewGameStart(event *EventsStruck) *GameStart {
 
-	gs := GameStart{SummonerName: "Paszymaja",
+	gs := GameStart{SummonerName: "Ahegao Loli",
 		EventID:   event.Events[0].EventID,
 		EventName: event.Events[0].EventName,
 		EventTime: event.Events[0].EventTime,
@@ -165,7 +181,7 @@ func NewDeath(event *EventsStruck) *PlayerDeath {
 	var pd PlayerDeath
 
 	for i, v := range event.Events {
-		if v.VictimName == "Paszymaja" {
+		if v.VictimName == "Ahegao Loli" {
 			pd = PlayerDeath{
 				EventID:    event.Events[i].EventID,
 				EventName:  event.Events[i].EventName,
@@ -258,6 +274,7 @@ func (t *Task) Stop() {
 func main() {
 
 	log.Println("Starting Badura Client ...")
+	flag.Parse()
 
 	client := NewClient()
 	ctx := context.Background()
