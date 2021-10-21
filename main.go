@@ -16,11 +16,6 @@ import (
 	"time"
 )
 
-const (
-	ClientURL = "https://127.0.0.1:2999"
-	ServerURL = "https://discord-js-boi-bot.herokuapp.com"
-)
-
 // A backoff schedule for when and how often to retry failed HTTP
 // requests. The first element is the time to wait after the
 // first failure, the second the time to wait after the second
@@ -48,47 +43,11 @@ type Client struct {
 	HTTPClient *http.Client
 }
 
-type EventsStruck struct {
-	Events Event `json:"Events"`
-}
-
-type Event []struct {
-	EventID    int           `json:"EventID"`
-	EventName  string        `json:"EventName"`
-	EventTime  float64       `json:"EventTime"`
-	Assisters  []interface{} `json:"Assisters,omitempty"`
-	KillerName string        `json:"KillerName,omitempty"`
-	VictimName string        `json:"VictimName,omitempty"`
-}
-
-type GameStart struct {
-	SummonerName string  `json:"SummonerName"`
-	EventID      int     `json:"EventID"`
-	EventName    string  `json:"EventName"`
-	EventTime    float64 `json:"EventTime"`
-	ChannelId    string  `json:"ChannelId"`
-}
-
-type PlayerDeath struct {
-	EventID    int     `json:"EventID"`
-	EventName  string  `json:"EventName"`
-	EventTime  float64 `json:"EventTime"`
-	KillerName string  `json:"KillerName,omitempty"`
-	VictimName string  `json:"VictimName,omitempty"`
-}
-
-type Response struct {
-	Status string `json:"Status"`
-}
-
-func NewClient() *Client {
+func NewClient(clientURL string, serverURL string, timeout time.Duration) *Client {
 	return &Client{
-		ClientURL: ClientURL,
-		ServerURL: ServerURL,
-		HTTPClient: &http.Client{
-			Timeout:   time.Minute,
-			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
-		},
+		ClientURL:  clientURL,
+		ServerURL:  serverURL,
+		HTTPClient: newHttpClient(timeout),
 	}
 }
 
@@ -100,7 +59,6 @@ func newHttpClient(timeout time.Duration) *http.Client {
 		IdleConnTimeout:     timeout,
 		MaxIdleConnsPerHost: 100,
 		MaxConnsPerHost:     100,
-		DisableCompression:  true,
 		TLSClientConfig:     tl,
 	}
 	return &http.Client{
@@ -163,9 +121,9 @@ func (c *Client) PushGameStart(ctx context.Context, v interface{}) (*Response, e
 
 }
 
-func NewGameStart(event *EventsStruck) *GameStart {
+func NewGameStart(event *EventsStruck, summonerName string) *GameStart {
 
-	gs := GameStart{SummonerName: "Ahegao Loli",
+	gs := GameStart{SummonerName: summonerName,
 		EventID:   event.Events[0].EventID,
 		EventName: event.Events[0].EventName,
 		EventTime: event.Events[0].EventTime,
@@ -176,12 +134,12 @@ func NewGameStart(event *EventsStruck) *GameStart {
 
 }
 
-func NewDeath(event *EventsStruck) *PlayerDeath {
+func NewDeath(event *EventsStruck, summonerName string) *PlayerDeath {
 
 	var pd PlayerDeath
 
 	for i, v := range event.Events {
-		if v.VictimName == "Ahegao Loli" {
+		if v.VictimName == summonerName {
 			pd = PlayerDeath{
 				EventID:    event.Events[i].EventID,
 				EventName:  event.Events[i].EventName,
@@ -236,7 +194,7 @@ func (c *Client) sendRequest(req *http.Request, v interface{}) error {
 	return nil
 }
 
-func (t *Task) Run(client *Client, ctx context.Context) {
+func (t *Task) Run(client *Client, ctx context.Context, summonerName string) {
 	for {
 		select {
 		case <-t.closed:
@@ -249,12 +207,12 @@ func (t *Task) Run(client *Client, ctx context.Context) {
 			if event != nil {
 
 				if Started == false {
-					startEvent := NewGameStart(event)
+					startEvent := NewGameStart(event, summonerName)
 					log.Printf("GameStart detected. Pushing to %s\n", client.ServerURL)
 					_, err = client.PushGameStart(ctx, startEvent)
 					Started = true
 				} else {
-					DeathEvent := NewDeath(event)
+					DeathEvent := NewDeath(event, summonerName)
 					log.Printf("NewDeath detected. Pushing to %s\n", client.ServerURL)
 					_, err = client.PushDeath(ctx, DeathEvent)
 				}
@@ -274,9 +232,14 @@ func (t *Task) Stop() {
 func main() {
 
 	log.Println("Starting Badura Client ...")
+
+	timeout := flag.Duration("client.timeout", 5, "client connection timeout")
+	clientURL := flag.String("client.url", "https://127.0.0.1:2999", "url of league client")
+	serverURL := flag.String("server.url", "https://discord-js-boi-bot.herokuapp.com", "url of output server")
+	summonerName := flag.String("summonerName", "Ahegao Loli", "summonerName")
 	flag.Parse()
 
-	client := NewClient()
+	client := NewClient(*clientURL, *serverURL, *timeout)
 	ctx := context.Background()
 
 	task := &Task{
@@ -287,7 +250,7 @@ func main() {
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt)
 	task.wg.Add(1)
-	go func() { defer task.wg.Done(); task.Run(client, ctx) }()
+	go func() { defer task.wg.Done(); task.Run(client, ctx, *summonerName) }()
 
 	select {
 	case sig := <-c:
