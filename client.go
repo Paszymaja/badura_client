@@ -42,7 +42,10 @@ func GetEvents(c TestClient, ctx context.Context) {
 
 	res := EventsStruck{}
 	fmt.Print("hmm")
-	sendRequestE(req, res)
+	err := sendRequestE(req, res, newHttpClient(0))
+	if err != nil {
+		return
+	}
 
 	c.Chan() <- res
 
@@ -57,7 +60,7 @@ func New(clientURL string, serverURL string, httpClient *http.Client) (TestClien
 		ctx:       ctx,
 		cancel:    cancel,
 		wg:        sync.WaitGroup{},
-		Timeout:   5}
+		Timeout:   0}
 	c.sendGameStartFunc = c.sendGameStart
 	c.sendDeathFunc = c.sendDeath
 
@@ -205,14 +208,15 @@ func (c *client) sendDeath(death PlayerDeath) {
 	}
 }
 
-func sendRequestE(req *http.Request, v interface{}) error {
+func sendRequestE(req *http.Request, v interface{}, client *http.Client) error {
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Accept", "application/json; charset=utf-8")
 
 	var err error
 	var res *http.Response
 
-	res, err = http.DefaultClient.Do(req)
+	res, err = client.Do(req)
+	fmt.Println(err)
 
 	if err != nil {
 		return err
