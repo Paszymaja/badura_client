@@ -10,8 +10,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"os/signal"
 	"sync"
 	"time"
 )
@@ -236,25 +234,8 @@ func main() {
 	timeout := flag.Duration("client.timeout", 5, "client connection timeout")
 	clientURL := flag.String("client.url", "https://127.0.0.1:2999", "url of league client")
 	serverURL := flag.String("server.url", "https://discord-js-boi-bot.herokuapp.com", "url of output server")
-	summonerName := flag.String("summonerName", "Ahegao Loli", "summonerName")
 	flag.Parse()
 
-	client := NewClient(*clientURL, *serverURL, *timeout)
-	ctx := context.Background()
-
-	task := &Task{
-		closed: make(chan struct{}),
-		ticker: time.NewTicker(time.Second * 5),
-	}
-
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt)
-	task.wg.Add(1)
-	go func() { defer task.wg.Done(); task.Run(client, ctx, *summonerName) }()
-
-	select {
-	case sig := <-c:
-		log.Printf("Got %s signal. Aborting...\n", sig)
-		task.Stop()
-	}
+	c, _ := New(*clientURL, *serverURL, newHttpClient(*timeout))
+	fmt.Println(c)
 }
