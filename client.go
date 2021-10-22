@@ -14,14 +14,14 @@ import (
 )
 
 type TestClient interface {
-	Chan() chan<- Event
+	Chan() chan<- EventsStruck
 	Stop()
 }
 
 type client struct {
 	ClientURL string
 	ServerURL string
-	events    chan Event
+	events    chan EventsStruck
 	client    *http.Client
 	once      sync.Once
 	wg        sync.WaitGroup
@@ -31,23 +31,20 @@ type client struct {
 
 	BackoffConfig BackoffConfig
 
-	getEventsFunc     func()
 	sendGameStartFunc func(start GameStart)
 	sendDeathFunc     func(death PlayerDeath)
 }
 
-func (c *client) GetEvents(ctx context.Context) (*EventsStruck, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/liveclientdata/eventdata", c.ClientURL), nil)
-	if err != nil {
-		return nil, err
-	}
+func GetEvents(c TestClient, ctx context.Context) {
+	req, _ := http.NewRequest("GET", "https://127.0.0.1:2999/liveclientdata/eventdata", nil)
+
 	req = req.WithContext(ctx)
 
 	res := EventsStruck{}
-	if err := c.sendRequestE(req, &res); err != nil {
-		return nil, err
-	}
-	return &res, nil
+	fmt.Print("hmm")
+	sendRequestE(req, res)
+
+	c.Chan() <- res
 
 }
 
@@ -56,7 +53,7 @@ func New(clientURL string, serverURL string, httpClient *http.Client) (TestClien
 
 	c := &client{ClientURL: clientURL,
 		ServerURL: serverURL,
-		events:    make(chan Event),
+		events:    make(chan EventsStruck),
 		ctx:       ctx,
 		cancel:    cancel,
 		wg:        sync.WaitGroup{},
@@ -77,7 +74,7 @@ func New(clientURL string, serverURL string, httpClient *http.Client) (TestClien
 	return c, nil
 }
 
-func (c *client) Chan() chan<- Event {
+func (c *client) Chan() chan<- EventsStruck {
 	return c.events
 }
 
@@ -90,7 +87,6 @@ func (c *client) run() {
 
 	maxWaitCheckFrequency := 100 * time.Millisecond
 	maxWaitCheck := time.NewTicker(maxWaitCheckFrequency)
-	event, _ := c.GetEvents(context.Background())
 
 	defer func() {
 		maxWaitCheck.Stop()
@@ -100,14 +96,15 @@ func (c *client) run() {
 	for {
 		select {
 		case e, ok := <-c.events:
-			if !ok {
-				fmt.Println(e)
+			if ok {
+				summonerName := "Paszymaja"
+				fmt.Print(summonerName)
+				DeathEvent := NewDeath(e, summonerName)
+				c.sendDeathFunc(*DeathEvent)
 				return
 			}
 		case <-maxWaitCheck.C:
-			summonerName := "Paszymaja"
-			DeathEvent := NewDeath(event, summonerName)
-			c.sendDeathFunc(*DeathEvent)
+
 		}
 	}
 }
@@ -208,34 +205,18 @@ func (c *client) sendDeath(death PlayerDeath) {
 	}
 }
 
-func (c *client) sendRequestE(req *http.Request, v interface{}) error {
+func sendRequestE(req *http.Request, v interface{}) error {
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Accept", "application/json; charset=utf-8")
 
 	var err error
 	var res *http.Response
 
-	for _, backoff := range backoffSchedule {
-		res, err = c.client.Do(req)
-
-		if err == nil {
-			break
-		}
-		log.Printf("Request error: %+v\n", err)
-		log.Printf("Retrying in %v\n", backoff)
-		time.Sleep(backoff)
-	}
+	res, err = http.DefaultClient.Do(req)
 
 	if err != nil {
 		return err
 	}
-
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-
-		}
-	}(res.Body)
 
 	if err != nil || res.StatusCode/100 != 2 {
 		return fmt.Errorf("unknown error, status code: %d", res.StatusCode)

@@ -10,7 +10,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -132,7 +135,7 @@ func NewGameStart(event *EventsStruck, summonerName string) *GameStart {
 
 }
 
-func NewDeath(event *EventsStruck, summonerName string) *PlayerDeath {
+func NewDeath(event EventsStruck, summonerName string) *PlayerDeath {
 
 	var pd PlayerDeath
 
@@ -210,7 +213,7 @@ func (t *Task) Run(client *Client, ctx context.Context, summonerName string) {
 					_, err = client.PushGameStart(ctx, startEvent)
 					Started = true
 				} else {
-					DeathEvent := NewDeath(event, summonerName)
+					DeathEvent := NewDeath(*event, summonerName)
 					log.Printf("NewDeath detected. Pushing to %s\n", client.ServerURL)
 					_, err = client.PushDeath(ctx, DeathEvent)
 				}
@@ -236,6 +239,19 @@ func main() {
 	serverURL := flag.String("server.url", "https://discord-js-boi-bot.herokuapp.com", "url of output server")
 	flag.Parse()
 
-	c, _ := New(*clientURL, *serverURL, newHttpClient(*timeout))
-	fmt.Println(c)
+	c, err := New(*clientURL, *serverURL, newHttpClient(*timeout))
+	GetEvents(c, context.Background())
+	if err != nil {
+		fmt.Print("err", "Failed to create client")
+	}
+	go setupShutdownHandler(c)
+}
+
+func setupShutdownHandler(client TestClient) {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
+	fmt.Print("\nReceived an interrupt, stopping services...\n")
+	client.Stop()
+	os.Exit(0)
 }
