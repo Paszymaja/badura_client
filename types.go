@@ -1,6 +1,6 @@
 package main
 
-type EventsStruck struct {
+type Events struct {
 	Events Event `json:"Events"`
 }
 
@@ -25,10 +25,6 @@ type PlayerDeath struct {
 	EventID    int     `json:"EventID"`
 	EventName  string  `json:"EventName"`
 	EventTime  float64 `json:"EventTime"`
-	KillerName string  `json:"KillerName,omitempty"`
-	VictimName string  `json:"VictimName,omitempty"`
-}
-
-type Response struct {
-	Status string `json:"Status"`
+	KillerName string  `json:"KillerName"`
+	VictimName string  `json:"VictimName"`
 }
