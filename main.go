@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+const (
+	channelID = "387298617431425025"
+)
+
 var eventsChan = make(chan Events)
 var Started = false
 
@@ -48,10 +52,12 @@ func main() {
 					summonerName = getSummonerName(ctx, c, *clientURL)
 				}
 				startEvent := NewGameStart(e, summonerName)
+				fmt.Println("Sending game start data to server")
 				sendEvent(ctx, c, startEvent, *serverURL, "game_started")
 				Started = true
 			} else {
 				deathEvent := NewDeath(e, summonerName)
+				fmt.Println("Sending game death data to server")
 				sendEvent(ctx, c, deathEvent, *serverURL, "death")
 			}
 		}
@@ -78,8 +84,6 @@ func sendEvent(ctx context.Context, c *http.Client, v interface{}, serverURL str
 		return
 	}
 
-	fmt.Println(resp.StatusCode)
-
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
@@ -93,7 +97,7 @@ func getEvents(ctx context.Context, c *http.Client, clientURL string) {
 
 	resp, err := c.Do(req)
 	if err != nil || resp.StatusCode/100 != 2 {
-		fmt.Println(err)
+		fmt.Println("Waiting for league client ...")
 		return
 	}
 	defer func(Body io.ReadCloser) {
@@ -109,7 +113,9 @@ func getEvents(ctx context.Context, c *http.Client, clientURL string) {
 	}
 
 	if reflect.ValueOf(events).IsValid() {
-		eventsChan <- events
+		if events.Events[0].EventName != "" {
+			eventsChan <- events
+		}
 	}
 }
 
@@ -135,7 +141,7 @@ func NewGameStart(e Events, sm string) *GameStart {
 		EventID:   e.Events[0].EventID,
 		EventName: e.Events[0].EventName,
 		EventTime: e.Events[0].EventTime,
-		ChannelId: "387298617431425025",
+		ChannelId: channelID,
 	}
 
 	return &gs
