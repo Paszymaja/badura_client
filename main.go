@@ -21,6 +21,32 @@ const (
 var eventsChan = make(chan Events)
 var Started = false
 
+type Client struct {
+	ctx        context.Context
+	HTTPClient *http.Client
+}
+
+func NewClient() *Client {
+	return &Client{
+		ctx:        context.Background(),
+		HTTPClient: newHTTPClient(),
+	}
+}
+
+func newHTTPClient() *http.Client {
+	tl := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+	t := &http.Transport{
+		MaxIdleConnsPerHost: 30,
+		MaxConnsPerHost:     30,
+		TLSClientConfig:     tl,
+	}
+	return &http.Client{
+		Transport: t,
+	}
+}
+
 func main() {
 
 	fmt.Println("Starting boi client ...")
@@ -29,8 +55,7 @@ func main() {
 	serverURL := flag.String("server.url", "https://discord-js-boi-bot.herokuapp.com", "url of output server")
 	flag.Parse()
 
-	c := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
-	ctx := context.Background()
+	c := NewClient()
 
 	var summonerName string
 	ticker := time.NewTicker(time.Second)
@@ -38,29 +63,29 @@ func main() {
 	for {
 		select {
 		case _ = <-ticker.C:
-			go getEvents(ctx, c, *clientURL)
+			go c.getEvents(*clientURL)
 
 		case e, ok := <-eventsChan:
 			if ok {
 				if Started == false {
 					if len(summonerName) == 0 {
-						summonerName = getSummonerName(ctx, c, *clientURL)
+						summonerName = c.getSummonerName(*clientURL)
 					}
 					startEvent := NewGameStart(e, summonerName)
 					fmt.Println("Sending game start data to server")
-					sendEvent(ctx, c, startEvent, *serverURL, "game_started")
+					c.sendEvent(startEvent, *serverURL, "game_started")
 					Started = true
 				} else {
 					deathEvent := NewDeath(e, summonerName)
 					fmt.Println("Sending game death data to server")
-					sendEvent(ctx, c, deathEvent, *serverURL, "death")
+					c.sendEvent(deathEvent, *serverURL, "death")
 				}
 			}
 		}
 	}
 }
 
-func sendEvent(ctx context.Context, c *http.Client, v interface{}, serverURL string, url string) {
+func (c *Client) sendEvent(v interface{}, serverURL string, path string) {
 
 	e, err := json.Marshal(v)
 	if err != nil {
@@ -69,12 +94,12 @@ func sendEvent(ctx context.Context, c *http.Client, v interface{}, serverURL str
 		return
 	}
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/%s", serverURL, url), bytes.NewBuffer(e))
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/%s", serverURL, path), bytes.NewBuffer(e))
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Accept", "application/json; charset=utf-8")
-	req = req.WithContext(ctx)
+	req = req.WithContext(c.ctx)
 
-	resp, err := c.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -87,11 +112,11 @@ func sendEvent(ctx context.Context, c *http.Client, v interface{}, serverURL str
 	}(resp.Body)
 }
 
-func getEvents(ctx context.Context, c *http.Client, clientURL string) {
+func (c *Client) getEvents(clientURL string) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/liveclientdata/eventdata", clientURL), nil)
-	req = req.WithContext(ctx)
+	req = req.WithContext(c.ctx)
 
-	resp, err := c.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil || resp.StatusCode/100 != 2 {
 		fmt.Println("Waiting for league client ...")
 		return
@@ -115,11 +140,11 @@ func getEvents(ctx context.Context, c *http.Client, clientURL string) {
 	}
 }
 
-func getSummonerName(ctx context.Context, c *http.Client, clientURL string) string {
+func (c *Client) getSummonerName(clientURL string) string {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/liveclientdata/activeplayername", clientURL), nil)
-	req = req.WithContext(ctx)
+	req = req.WithContext(c.ctx)
 
-	resp, err := c.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil || resp.StatusCode/100 != 2 {
 		fmt.Println(err)
 		return ""
