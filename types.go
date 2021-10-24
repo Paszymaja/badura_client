@@ -1,5 +1,21 @@
 package main
 
+import (
+	"context"
+	"net/http"
+)
+
+type config struct {
+	clientURL string
+	serverURL string
+}
+
+type Client struct {
+	ctx        context.Context
+	HTTPClient *http.Client
+	config     *config
+}
+
 type Events struct {
 	Events Event `json:"Events"`
 }
