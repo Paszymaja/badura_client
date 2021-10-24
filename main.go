@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"reflect"
 	"time"
@@ -34,11 +33,6 @@ func main() {
 	ctx := context.Background()
 
 	var summonerName string
-
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -46,19 +40,21 @@ func main() {
 		case _ = <-ticker.C:
 			go getEvents(ctx, c, *clientURL)
 
-		case e, _ := <-eventsChan:
-			if Started == false {
-				if len(summonerName) == 0 {
-					summonerName = getSummonerName(ctx, c, *clientURL)
+		case e, ok := <-eventsChan:
+			if ok {
+				if Started == false {
+					if len(summonerName) == 0 {
+						summonerName = getSummonerName(ctx, c, *clientURL)
+					}
+					startEvent := NewGameStart(e, summonerName)
+					fmt.Println("Sending game start data to server")
+					sendEvent(ctx, c, startEvent, *serverURL, "game_started")
+					Started = true
+				} else {
+					deathEvent := NewDeath(e, summonerName)
+					fmt.Println("Sending game death data to server")
+					sendEvent(ctx, c, deathEvent, *serverURL, "death")
 				}
-				startEvent := NewGameStart(e, summonerName)
-				fmt.Println("Sending game start data to server")
-				sendEvent(ctx, c, startEvent, *serverURL, "game_started")
-				Started = true
-			} else {
-				deathEvent := NewDeath(e, summonerName)
-				fmt.Println("Sending game death data to server")
-				sendEvent(ctx, c, deathEvent, *serverURL, "death")
 			}
 		}
 	}
